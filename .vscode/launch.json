@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    
+
+
+    {
+      "name": "Web — DEV",
+      "type": "dart",
+      "request": "launch",
+      "deviceId": "web-server",
+      "args": [
+        "--web-port","5173",
+        "--dart-define","SUPABASE_URL=https://cmgxzadkclqiaxckqroa.supabase.co",
+        "--dart-define","SUPABASE_ANON_KEY=sb_publishable_m8ntNst0YuW-UuaKQT42Xw_Y5CdR52T"
+      ]
+    }
+  ]
+}
