@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'pages/catalog_page.dart';
-
+import 'pages/login_page.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 // Read Supabase config from --dart-define at launch
 const String kSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
@@ -15,27 +17,58 @@ Future<void> main() async {
     'Missing Supabase config. Pass --dart-define SUPABASE_URL and SUPABASE_ANON_KEY.',
   );
 
-  await Supabase.initialize(
-    url: kSupabaseUrl,
-    anonKey: kSupabaseAnonKey,
-  );
+  await Supabase.initialize(url: kSupabaseUrl, anonKey: kSupabaseAnonKey);
 
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late final StreamSubscription<AuthState> _authSub;
+  bool _loggedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = Supabase.instance.client.auth;
+    _loggedIn = auth.currentSession != null;
+    _authSub = auth.onAuthStateChange.listen((data) {
+      // whenever user signs in/out, rebuild
+      setState(() {
+        _loggedIn = Supabase.instance.client.auth.currentSession != null;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Wedding Showroom',
+      locale: const Locale('ar'),
+      supportedLocales: const [Locale('ar'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         colorSchemeSeed: const Color(0xFF060B13),
         useMaterial3: true,
       ),
       debugShowCheckedModeBanner: false,
-      home: const CatalogPage(),
+      home: _loggedIn ? const CatalogPage() : const LoginPage(),
     );
   }
 }

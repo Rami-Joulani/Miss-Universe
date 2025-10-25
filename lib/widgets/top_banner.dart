@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 class TopBanner extends StatelessWidget {
-  const TopBanner({super.key});
+  final VoidCallback? onMenu;
+  const TopBanner({super.key, this.onMenu});
 
   @override
   Widget build(BuildContext context) {
@@ -14,31 +15,24 @@ class TopBanner extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1A0F0A), // deep brown
-              Color(0xFF4E3A2E), // bronze fade
-            ],
+            colors: [Color(0xFF1A0F0A), Color(0xFF4E3A2E)],
           ),
-          border: Border(
-            bottom: BorderSide(color: Color(0xFFC8A46D), width: 1.5),
-          ),
+          border: Border(bottom: BorderSide(color: Color(0xFFC8A46D), width: 1.5)),
         ),
         child: Row(
+          textDirection: TextDirection.ltr,
           children: [
-            Image.asset(
-              'assets/miss_universe_logo.jpeg',
-              height: 40,
-              filterQuality: FilterQuality.high,
-            ),
+            if (onMenu != null)
+              IconButton(
+                icon: const Icon(Icons.menu, color: Colors.white),
+                onPressed: onMenu,
+                tooltip: 'Menu',
+              ),
+            Image.asset('assets/miss_universe_logo.jpeg', height: 40, filterQuality: FilterQuality.high),
             const SizedBox(width: 16),
             const Text(
               'Miss Universe',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
-              ),
+              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1.2),
             ),
           ],
         ),
