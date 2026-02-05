@@ -24,6 +24,7 @@ class _NewPaymentPageState extends State<NewPaymentPage> {
   String? _customerId;
   String? _customerNamePhone;
   String? _groupKey; // link to previous deposit
+  String? _groupLabel; // friendly label for selected deposit
   String? _receivedByStaffId;
   String? _receivedByLabel; // display only
   num? _expectedTotal; // required for deposit
@@ -49,13 +50,16 @@ class _NewPaymentPageState extends State<NewPaymentPage> {
 
   Future<void> _pickGroup() async {
     if (_customerId == null) return;
-    final result = await showModalBottomSheet<String>(
+    final result = await showModalBottomSheet<Map<String,dynamic>>(
       context: context,
       isScrollControlled: true,
       builder: (_) => SelectOpenGroupSheet(customerId: _customerId!),
     );
     if (result != null) {
-      setState(() => _groupKey = result);
+      setState(() {
+        _groupKey = result['group_key'] as String?;
+        _groupLabel = result['agreement_label'] as String? ?? 'غير مسمى';
+      });
       await _loadBalance();
     }
   }
@@ -183,14 +187,26 @@ class _NewPaymentPageState extends State<NewPaymentPage> {
             : 'تم حفظ الدفعة، يتبقى: $after';
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(msg)));
+        ).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.green,
+            duration: const Duration(milliseconds: 6000),
+          ),
+        );
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text('Failed: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(milliseconds: 8000),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -257,7 +273,7 @@ class _NewPaymentPageState extends State<NewPaymentPage> {
               TextFormField(
                 decoration: const InputDecoration(
                   labelText: 'المبلغ',
-                  prefixText: '\$ ',
+                  prefixText: '₪ ',
                 ),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
@@ -312,7 +328,7 @@ class _NewPaymentPageState extends State<NewPaymentPage> {
                 TextFormField(
                   decoration: const InputDecoration(
                     labelText: 'المبلغ المتوقع للفاتورة الكاملة',
-                    prefixText: '\$ ',
+                    prefixText: '₪ ',
                   ),
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
@@ -330,7 +346,7 @@ class _NewPaymentPageState extends State<NewPaymentPage> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('ابحث عن العربون المرتبط'),
                   subtitle: Text(
-                    _groupKey == null ? 'اضغط للاختيار' : _groupKey!,
+                    _groupKey == null ? 'اضغط للاختيار' : _groupLabel ?? 'غير مسمى',
                   ),
                   trailing: const Icon(Icons.link),
                   onTap: _pickGroup,

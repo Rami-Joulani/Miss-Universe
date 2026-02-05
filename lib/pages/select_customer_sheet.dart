@@ -1,6 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
+import 'package:rxdart/rxdart.dart';
+import '../core/constants.dart';
+import '../providers/customer_provider.dart';
 
+/// Bottom sheet for searching and creating customers with debounced search
 class SelectCustomerSheet extends StatefulWidget {
   const SelectCustomerSheet({super.key});
 
@@ -12,111 +17,47 @@ class _SelectCustomerSheetState extends State<SelectCustomerSheet> {
   final _controller = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  List<Map<String,dynamic>> _results = [];
-  bool _loading = false;
+  final _searchSubject = BehaviorSubject<String>();
+  StreamSubscription? _searchSubscription;
+  bool _isCreating = false;
 
-  Future<void> _search() async {
-    final q = _controller.text.trim();
-    if (q.isEmpty) return;
-    setState(() => _loading = true);
-    try {
-      final data = await Supabase.instance.client
-          .from('customers')
-          .select('id,name,phone')
-          .or('name.ilike.%$q%,phone.ilike.%$q%')
-          .limit(50);
-      setState(() => _results = List<Map<String,dynamic>>.from(data));
-    } catch (_) {
-      setState(() => _results = []);
-    } finally {
-      setState(() => _loading = false);
-    }
+  @override
+  void initState() {
+    super.initState();
+    
+    // Setup debounced search - waits 300ms after user stops typing
+    _searchSubscription = _searchSubject
+        .debounceTime(AppConstants.searchDebounceDuration)
+        .distinct()
+        .listen((query) {
+      if (mounted) {
+        context.read<CustomerProvider>().searchCustomers(query);
+      }
+    });
   }
 
-  Future<void> _create() async {
-    final q = _controller.text.trim();
-    if (q.isEmpty) return;
-    // very simple split -> name or phone
-    final isPhone = RegExp(r'[0-9\-\+\s]+').hasMatch(q) && q.replaceAll(RegExp(r'\D'), '').length >= 6;
-    final payload = {
-      'name': isPhone ? 'Customer' : q,
-      'phone': isPhone ? q : '0000000',
-    };
-    try {
-      final row = await Supabase.instance.client.from('customers').insert(payload).select('id,name,phone').single();
-      if (mounted) {
-        Navigator.pop<Map<String,String?>>(context, {
-          'id': row['id'] as String,
-          'label': '${row['name']} • ${row['phone']}',
-        });
-      }
-    } catch (_) {}
+  @override
+  void dispose() {
+    _searchSubscription?.cancel();
+    _searchSubject.close();
+    _controller.dispose();
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    super.dispose();
   }
 
-  Future<void> _openCreateForm() async {
-    _nameCtrl.clear();
-    _phoneCtrl.clear();
-    final res = await showDialog<bool>(
-      context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text('اضف زبون'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'الاسم'),
-                textInputAction: TextInputAction.next,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _phoneCtrl,
-                decoration: const InputDecoration(labelText: 'رقم الهاتف'),
-                keyboardType: TextInputType.phone,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('الغاء')),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('حفظ'),
-            ),
-          ],
-        );
-      },
-    );
-    if (res != true) return;
-    final name = _nameCtrl.text.trim().isEmpty ? 'Customer' : _nameCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim().isEmpty ? '0000000' : _phoneCtrl.text.trim();
-    try {
-      final row = await Supabase.instance.client
-          .from('customers')
-          .insert({'name': name, 'phone': phone})
-          .select('id,name,phone')
-          .single();
-      if (mounted) {
-        Navigator.pop<Map<String,String?>>(context, {
-          'id': row['id'] as String,
-          'label': '${row['name']} • ${row['phone']}',
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add: $e')),
-      );
-    }
+  void _onSearchChanged(String value) {
+    _searchSubject.add(value);
   }
 
   Future<void> _openCreateFormSheet() async {
     _nameCtrl.clear();
     _phoneCtrl.clear();
+    
     final res = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (_) {
+      builder: (bottomSheetContext) {
         return SafeArea(
           child: Padding(
             padding: EdgeInsets.only(
@@ -127,27 +68,42 @@ class _SelectCustomerSheetState extends State<SelectCustomerSheet> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('اضف زبون', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'اضف زبون',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _nameCtrl,
-                    decoration: const InputDecoration(labelText: 'الاسم'),
+                    decoration: const InputDecoration(
+                      labelText: 'الاسم',
+                      hintText: 'مطلوب (حرفان على الأقل)',
+                      border: OutlineInputBorder(),
+                    ),
                     textInputAction: TextInputAction.next,
+                    autofocus: true,
                   ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _phoneCtrl,
-                    decoration: const InputDecoration(labelText: 'رقم الهاتف'),
+                    decoration: const InputDecoration(
+                      labelText: 'رقم الهاتف',
+                      hintText: 'مطلوب (٦ أرقام على الأقل)',
+                      border: OutlineInputBorder(),
+                    ),
                     keyboardType: TextInputType.phone,
                   ),
                   const SizedBox(height: 16),
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const Spacer(),
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('الغاء')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(bottomSheetContext, false),
+                        child: const Text('الغاء'),
+                      ),
                       const SizedBox(width: 8),
                       FilledButton(
-                        onPressed: () => Navigator.pop(context, true),
+                        onPressed: () => Navigator.pop(bottomSheetContext, true),
                         child: const Text('حفظ'),
                       ),
                     ],
@@ -159,27 +115,38 @@ class _SelectCustomerSheetState extends State<SelectCustomerSheet> {
         );
       },
     );
-    if (res == true) {
-      final name = _nameCtrl.text.trim().isEmpty ? 'Customer' : _nameCtrl.text.trim();
-      final phone = _phoneCtrl.text.trim().isEmpty ? '0000000' : _phoneCtrl.text.trim();
-      try {
-        final row = await Supabase.instance.client
-            .from('customers')
-            .insert({'name': name, 'phone': phone})
-            .select('id,name,phone')
-            .single();
-        if (mounted) {
-          Navigator.pop<Map<String,String?>>(context, {
-            'id': row['id'] as String,
-            'label': '${row['name']} • ${row['phone']}',
-          });
-        }
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add: $e')),
-        );
-      }
+    
+    if (res != true || !mounted) return;
+    
+    // Show loading state
+    setState(() => _isCreating = true);
+    
+    final name = _nameCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    
+    // Create customer using provider
+    final customer = await context.read<CustomerProvider>().createCustomer(
+      name: name,
+      phone: phone,
+    );
+    
+    setState(() => _isCreating = false);
+    
+    if (customer != null && mounted) {
+      // Success - return to parent
+      Navigator.pop<Map<String, String?>>(context, {
+        'id': customer.id,
+        'label': '${customer.name} • ${customer.phone}',
+      });
+    } else if (mounted) {
+      // Error - show message
+      final error = context.read<CustomerProvider>().error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'فشل إضافة الزبون'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -187,59 +154,139 @@ class _SelectCustomerSheetState extends State<SelectCustomerSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Search field with debouncing
               TextField(
                 controller: _controller,
                 decoration: InputDecoration(
-                  labelText: 'البحث عن زبون من خلال الاسم أو رقم الهاتف',
-                  suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: _search),
+                  labelText: 'البحث عن زبون',
+                  hintText: 'ادخل الاسم أو رقم الهاتف',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: _isCreating
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const Icon(Icons.search),
                 ),
-                onSubmitted: (_) => _search(),
+                onChanged: _onSearchChanged,
+                autofocus: true,
               ),
               const SizedBox(height: 12),
-              if (_loading) const LinearProgressIndicator(),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _results.length,
-                  itemBuilder: (_, i) {
-                    final r = _results[i];
-                    return ListTile(
-                      title: Text(r['name'] ?? ''),
-                      subtitle: Text(r['phone'] ?? ''),
-                      onTap: () {
-                        Navigator.pop<Map<String,String?>>(context, {
-                          'id': r['id'] as String,
-                          'label': '${r['name']} • ${r['phone']}',
-                        });
-                      },
+              
+              // Search results
+              Consumer<CustomerProvider>(
+                builder: (context, provider, _) {
+                  // Show loading indicator
+                  if (provider.isSearching) {
+                    return const Padding(
+                      padding: EdgeInsets.all(24.0),
+                      child: CircularProgressIndicator(),
                     );
-                  },
-                ),
+                  }
+
+                  // Show error if any
+                  if (provider.error != null && provider.searchResults.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(
+                        provider.error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    );
+                  }
+
+                  // Show results
+                  if (provider.searchResults.isNotEmpty) {
+                    return Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: provider.searchResults.length,
+                        itemBuilder: (_, i) {
+                          final customer = provider.searchResults[i];
+                          return ListTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.person),
+                            ),
+                            title: Text(customer.name),
+                            subtitle: Text(customer.phone),
+                            onTap: () {
+                              Navigator.pop<Map<String, String?>>(context, {
+                                'id': customer.id,
+                                'label': '${customer.name} • ${customer.phone}',
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    );
+                  }
+
+                  // Show "no results" message
+                  if (_controller.text.trim().isNotEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.search_off,
+                            size: 48,
+                            color: Colors.grey.shade400,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'لا توجد نتائج',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'يمكنك إضافة زبون جديد',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  // Default state
+                  return const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text(
+                      'ابدأ الكتابة للبحث عن زبون',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  );
+                },
               ),
-              if (_results.isEmpty && !_loading)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    'لا توجد نتائج. يمكنك إضافة زبون جديد.',
-                    style: Theme.of(context).textTheme.bodySmall,
+              
+              const SizedBox(height: 8),
+              const Divider(),
+              
+              // Add new customer button
+              SizedBox(
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: _isCreating ? null : _openCreateFormSheet,
+                  icon: const Icon(Icons.person_add),
+                  label: const Text('اضف زبون جديد'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: _openCreateFormSheet,
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('اضف زبون جديد'),
-                  ),
-                ],
               ),
             ],
           ),

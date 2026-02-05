@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
 import 'pages/catalog_page.dart';
 import 'pages/login_page.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'providers/customer_provider.dart';
+import 'providers/dress_provider.dart';
+import 'providers/payment_provider.dart';
 
 // Read Supabase config from --dart-define at launch
 const String kSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
@@ -19,7 +23,16 @@ Future<void> main() async {
 
   await Supabase.initialize(url: kSupabaseUrl, anonKey: kSupabaseAnonKey);
 
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CustomerProvider()),
+        ChangeNotifierProvider(create: (_) => DressProvider()),
+        ChangeNotifierProvider(create: (_) => PaymentProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatefulWidget {

@@ -58,7 +58,7 @@ class _SelectOpenGroupSheetState extends State<SelectOpenGroupSheet> {
                     title: Text(label),
                     subtitle: Text('الباقي: $bal'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.pop<String>(context, r['group_key'] as String),
+                    onTap: () => Navigator.pop<Map<String,dynamic>>(context, r),
                   );
                 },
               ),
